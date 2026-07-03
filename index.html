@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operator Scanner - Pengurangan Stok Gudang</title>
+    <!-- Library QR Scanner -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+    <!-- Firebase SDK (Compat Version) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --secondary: #e74c3c; /* Menggunakan warna merah sebagai identitas OUT */
+            --success: #2ecc71;
+            --dark: #34495e;
+            --white: #ffffff;
+            --gray: #95a5a6;
+            --light: #f8f9fa;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        body { background-color: #f4f6f9; color: var(--dark); min-height: 100vh; display: flex; flex-direction: column; }
+
+        /* HEADER */
+        header {
+            background: linear-gradient(135deg, var(--primary), var(--dark));
+            color: var(--white); padding: 15px 20px;
+            display: flex; justify-content: space-between; align-items: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+            height: 70px;
+        }
+        header h1 { font-size: 18px; display: flex; align-items: center; gap: 8px; }
+        header p { font-size: 11px; opacity: 0.8; text-align: right; }
+        .status-badge { background: #27ae60; color: white; padding: 2px 6px; border-radius: 10px; font-size: 10px; font-weight: bold; }
+
+        /* MAIN CONTENT */
+        .container {
+            flex: 1; max-width: 500px; width: 100%; margin: 0 auto; padding: 20px;
+            display: flex; flex-direction: column; justify-content: center;
+        }
+
+        .scan-card {
+            background: var(--white); border-radius: 12px; padding: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.05);
+            text-align: center;
+        }
+
+        .scan-card h2 { font-size: 20px; color: var(--primary); margin-bottom: 8px; }
+        .scan-card p.subtitle { font-size: 13px; color: var(--gray); margin-bottom: 20px; }
+
+        /* CAMERA AREA */
+        .camera-box {
+            width: 100%; background: #000; border-radius: 8px; overflow: hidden;
+            margin-bottom: 15px; border: 3px solid var(--primary); position: relative;
+        }
+        #reader { width: 100%; }
+
+        /* BUTTONS */
+        .btn {
+            display: block; width: 100%; padding: 12px; background-color: var(--primary);
+            color: var(--white); border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;
+            transition: background 0.2s, transform 0.1s; text-align: center; box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn-danger { background-color: var(--secondary); }
+        .btn-secondary { background-color: #7f8c8d; }
+
+        /* MODAL POP-UP */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(44, 62, 80, 0.7); backdrop-filter: blur(4px);
+            z-index: 2000; display: none; align-items: center; justify-content: center; padding: 20px;
+            opacity: 0; transition: opacity 0.3s ease;
+        }
+        .modal-overlay.active { display: flex; opacity: 1; }
+        .modal-content {
+            background: var(--white); width: 100%; max-width: 400px; border-radius: 12px;
+            box-shadow: 0 15px 30px rgba(0,0,0,0.2); padding: 24px;
+            transform: scale(0.9); transition: transform 0.3s ease;
+        }
+        .modal-overlay.active .modal-content { transform: scale(1); }
+        .modal-header { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
+        .modal-header h3 { font-size: 18px; color: var(--primary); }
+        
+        .form-group { margin-bottom: 15px; text-align: left; }
+        .form-group label { display: block; font-size: 11px; font-weight: 700; margin-bottom: 5px; color: #555; text-transform: uppercase; }
+        .form-control { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; color: var(--dark); }
+        .form-control:focus { outline: none; border-color: var(--secondary); }
+
+        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+        .modal-footer .btn { width: auto; padding: 10px 20px; font-size: 13px; }
+
+        /* TOAST FLOATING */
+        .toast {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(100px);
+            background: #27ae60; color: white; padding: 12px 24px; border-radius: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-size: 13px; font-weight: 600;
+            z-index: 9999; opacity: 0; transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s;
+            text-align: center; min-width: 280px;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+        .badge-alert { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+    <!-- NOTIFIKASI TOAST -->
+    <div id="operator-toast" class="toast">🟢 Terhubung ke Sistem Cloud</div>
+
+    <!-- MODAL INPUT OUT -->
+    <div id="out-mutation-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span style="font-size: 20px;">🔻</span>
+                <h3>Input Barang Keluar</h3>
+            </div>
+            <div class="form-group">
+                <p id="item-info-display" style="font-size: 14px; font-weight: 600; color: var(--primary); line-height: 1.4;"></p>
+                <div id="item-status-badge-area"></div>
+            </div>
+            
+            <div class="form-group">
+                <label id="qty-label">Jumlah Keluar (Qty)</label>
+                <input type="number" id="qty-input" class="form-control" min="1" value="1">
+            </div>
+            
+            <div class="form-group">
+                <label>Keterangan / Tujuan Keluar</label>
+                <input type="text" id="desc-input" class="form-control" placeholder="Cth: Produksi, Kirim ke Toko, dll" autocomplete="off">
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeOutModal()">Batal</button>
+                <button class="btn btn-danger" id="submit-out-btn">Konfirmasi OUT</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HEADER -->
+    <header>
+        <div>
+            <h1>⚙️ Terminal Operator</h1>
+        </div>
+        <div>
+            <p>Status Koneksi: <span class="status-badge">ONLINE</span></p>
+        </div>
+    </header>
+
+    <!-- CONTENT AREA -->
+    <div class="container">
+        <div class="scan-card">
+            <h2>Pindai QR Code Barang</h2>
+            <p class="subtitle">Arahkan kamera ke QR Code Dus atau Roll Eceran untuk memotong stok.</p>
+            
+            <div class="camera-box">
+                <div id="reader"></div>
+            </div>
+
+            <button id="camera-control-btn" class="btn" onclick="toggleCamera()">🔴 MATIKAN KAMERA</button>
+        </div>
+    </div>
+
+<script>
+    // Konfigurasi Firebase (Sama persis dengan database utama Anda)
+    const firebaseConfig = {
+        apiKey: "AIzaSyDn9oZ-5eR89Tg4tYtTqCxuaP4MiI2m4zE",
+        authDomain: "material-check-sheet-79654.firebaseapp.com",
+        databaseURL: "https://material-check-sheet-79654-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "material-check-sheet-79654",
+        storageBucket: "material-check-sheet-79654.firebasestorage.app",
+        messagingSenderId: "794898918404",
+        appId: "1:794898918404:web:634d0290f216637890d951"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    let html5QrcodeScanner = null;
+    let itemsDbCloud = {};
+    let isCameraActive = false;
+
+    // Sinkronisasi data dari Firebase
+    database.ref('items_db').on('value', (snapshot) => {
+        itemsDbCloud = snapshot.val() || {};
+    });
+
+    // Otomatis nyalakan kamera saat pertama kali dibuka
+    window.addEventListener('DOMContentLoaded', () => {
+        startScanner();
+    });
+
+    function showToast(message, isError = false) {
+        const toast = document.getElementById('operator-toast');
+        toast.innerText = message;
+        toast.style.background = isError ? "#e74c3c" : "#27ae60";
+        toast.classList.add('show');
+        setTimeout(() => { toast.classList.remove('show'); }, 3500);
+    }
+
+    function startScanner() {
+        isCameraActive = true;
+        document.getElementById('camera-control-btn').textContent = "🔴 MATIKAN KAMERA";
+        document.getElementById('camera-control-btn').className = "btn btn-danger";
+
+        html5QrcodeScanner = new Html5Qrcode("reader");
+        html5QrcodeScanner.start(
+            { facingMode: "environment" }, 
+            { fps: 12, qrbox: 250 },
+            onScanSuccess
+        ).catch(() => {
+            showToast("Gagal mengakses kamera!", true);
+            setCameraOfflineStyle();
+        });
+    }
+
+    function stopScanner() {
+        if (html5QrcodeScanner) {
+            html5QrcodeScanner.stop().then(() => {
+                setCameraOfflineStyle();
+            }).catch(() => {
+                setCameraOfflineStyle();
+            });
+        }
+    }
+
+    function setCameraOfflineStyle() {
+        isCameraActive = false;
+        document.getElementById('camera-control-btn').textContent = "📷 AKTIFKAN KAMERA";
+        document.getElementById('camera-control-btn').className = "btn";
+    }
+
+    function toggleCamera() {
+        if (isCameraActive) stopScanner();
+        else startScanner();
+    }
+    
+    function onScanSuccess(decodedText) {
+        // Stop scan sementara agar popup tidak bertumpuk jika terus mendeteksi QR
+        stopScanner(); 
+
+        let token = decodedText.trim().toUpperCase();
+        let foundId = null;
+        let isChildScan = false;
+
+        // Cari token QR di database cloud
+        Object.keys(itemsDbCloud).forEach(key => { 
+            let item = itemsDbCloud[key];
+            if (item.qrCode === token) { 
+                foundId = item.id; 
+                isChildScan = false; 
+            } else if (item.isParent && item.childQrs && item.childQrs.includes(token)) { 
+                foundId = item.id; 
+                isChildScan = true; 
+            }
+        });
+
+        if (foundId) {
+            openOutModal(foundId, isChildScan, token);
+        } else {
+            alert(`⚠️ QR Code [${token}] Tidak Terdaftar di Sistem!`);
+            // Nyalakan kamera kembali jika salah scan
+            startScanner();
+        }
+    }
+
+    function openOutModal(itemId, isChildScan, token) {
+        const item = itemsDbCloud[itemId];
+        
+        // Setup Informasi Nama Barang
+        let infoText = `Nama Barang: ${item.name}\nKode QR: ${token}`;
+        document.getElementById('item-info-display').innerText = infoText;
+
+        // Setup Badge Status Tipe Kemasan
+        const badgeArea = document.getElementById('item-status-badge-area');
+        if (isChildScan) {
+            badgeArea.innerHTML = `<span class="badge-alert" style="background:#f39c12; color:#fff;">🧵 SCAN ECERAN (ROLL)</span>`;
+            document.getElementById('qty-label').textContent = "Kuantitas Keluar (Otomatis 1 Roll)";
+            document.getElementById('qty-input').value = "1";
+            document.getElementById('qty-input').disabled = true; // Kunci inputan karena aturan 1 eceran roll
+        } else {
+            badgeArea.innerHTML = `<span class="badge-alert" style="background:#2980b9; color:#fff;">📦 SCAN UTAMA (${(item.unit || 'pcs').toUpperCase()})</span>`;
+            document.getElementById('qty-label').textContent = `Kuantitas Keluar (${item.unit || 'pcs'})`;
+            document.getElementById('qty-input').value = "1";
+            document.getElementById('qty-input').disabled = false;
+        }
+
+        document.getElementById('desc-input').value = "";
+        document.getElementById('out-mutation-modal').classList.add('active');
+        setTimeout(() => document.getElementById('desc-input').focus(), 150);
+
+        // Handler klik tombol simpan konfirmasi
+        document.getElementById('submit-out-btn').onclick = function() {
+            const qtyOut = isChildScan ? 1 : parseInt(document.getElementById('qty-input').value);
+            const keterangan = document.getElementById('desc-input').value.trim() || (isChildScan ? `Scan Eceran Roll [${token}]` : "Scan Operator Out");
+            
+            if (isNaN(qtyOut) || qtyOut <= 0) return alert("Masukkan kuantitas secara valid!");
+            
+            eksekusiPotongStokFirebase(itemId, qtyOut, keterangan, isChildScan);
+        };
+    }
+
+    function closeOutModal() {
+        document.getElementById('out-mutation-modal').classList.remove('active');
+        // Nyalakan kamera kembali untuk siap memindai barang berikutnya
+        startScanner();
+    }
+
+    function eksekusiPotongStokFirebase(itemId, qtyOut, keterangan, isChildScan) {
+        const item = itemsDbCloud[itemId];
+        let currentMutations = item.mutations || [];
+
+        // Generate timestamp lokal format YYYY-MM-DD HH:MM:SS
+        const now = new Date();
+        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+        let finalKetLog = isChildScan ? `${keterangan} (Dus Terbuka / Broken Pack)` : keterangan;
+
+        // Push baris baru transaksi OUT
+        currentMutations.push({
+            tanggal: timestamp,
+            jenis: "OUT",
+            ket: finalKetLog,
+            in: 0,
+            out: qtyOut,
+            total: 0,
+            stockAkhir: 0
+        });
+
+        // Hitung ulang saldo berjalan
+        let updates = {};
+        updates['items_db/' + itemId + '/mutations'] = recalculateLogic({ ...item, mutations: currentMutations });
+        
+        // Jika operator scan roll eceran, otomatis flag kemasan induk berubah menjadi broken pack
+        if (isChildScan && item.isParent) {
+            updates['items_db/' + itemId + '/brokenPack'] = true;
+        }
+
+        // Kirim update ke Cloud Firebase
+        database.ref().update(updates)
+            .then(() => {
+                showToast(`🔻 Sukses memotong ${qtyOut} ${item.unit || 'pcs'}!`);
+                document.getElementById('out-mutation-modal').classList.remove('active');
+                // Balik ke mode stand-by scanner
+                startScanner();
+            })
+            .catch(err => {
+                alert("Gagal memotong stok ke server cloud: " + err.message);
+            });
+    }
+
+    // Fungsi hitung mundur/maju total saldo sisa berjalan bincard
+    function recalculateLogic(item) {
+        if (!item || !item.mutations) return [];
+        let init = item.mutations.find(m => m.jenis === "INITIAL");
+        let others = item.mutations.filter(m => m.jenis !== "INITIAL").sort((a, b) => new Date(a.tanggal) - new Date(b.tanggal));
+        let sorted = []; 
+        
+        if (init) { 
+            init.stockAkhir = item.initialStock; 
+            sorted.push(init); 
+        }
+        
+        let runningStock = item.initialStock;
+        others.forEach(mut => {
+            if (mut.jenis === "IN") runningStock += mut.in;
+            else if (mut.jenis === "OUT") runningStock -= mut.out;
+            mut.total = mut.jenis === "IN" ? mut.in : -mut.out;
+            mut.stockAkhir = runningStock; 
+            sorted.push(mut);
+        });
+        return sorted;
+    }
+</script>
+</body>
+</html>
