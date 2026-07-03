@@ -55,9 +55,23 @@
         /* CAMERA AREA */
         .camera-box {
             width: 100%; background: #000; border-radius: 8px; overflow: hidden;
-            margin-bottom: 15px; border: 3px solid var(--primary); position: relative;
+            margin-bottom: 20px; border: 3px solid var(--primary); position: relative;
+            /* Default tampilan awal: hanya berupa strip garis lurus horizontal */
+            min-height: 6px; height: 6px;
+            display: flex; align-items: center; justify-content: center;
+            transition: min-height 0.3s ease, height 0.3s ease;
+        }
+        /* Class modifier saat kamera aktif */
+        .camera-box.active {
+            min-height: 250px;
+            height: auto;
         }
         #reader { width: 100%; }
+        
+        /* Laser Animasi Strip saat Offline */
+        .laser-line {
+            width: 100%; height: 100%; background: var(--secondary); box-shadow: 0 0 8px var(--secondary);
+        }
 
         /* BUTTONS */
         .btn {
@@ -155,18 +169,20 @@
     <div class="container">
         <div class="scan-card">
             <h2>Pindai QR Code Barang</h2>
-            <p class="subtitle">Arahkan kamera ke QR Code Dus atau Roll Eceran untuk memotong stok.</p>
+            <p class="subtitle">Klik aktifkan kamera untuk mulai memindai QR Code Dus atau Roll Eceran.</p>
             
-            <div class="camera-box">
+            <!-- Box kamera dengan animasi melembut saat aktif -->
+            <div id="camera-container-box" class="camera-box">
+                <div id="laser-bar" class="laser-line"></div>
                 <div id="reader"></div>
             </div>
 
-            <button id="camera-control-btn" class="btn" onclick="toggleCamera()">🔴 MATIKAN KAMERA</button>
+            <button id="camera-control-btn" class="btn" onclick="toggleCamera()">📷 AKTIFKAN KAMERA</button>
         </div>
     </div>
 
 <script>
-    // Konfigurasi Firebase (Sama persis dengan database utama Anda)
+    // Konfigurasi Firebase
     const firebaseConfig = {
         apiKey: "AIzaSyDn9oZ-5eR89Tg4tYtTqCxuaP4MiI2m4zE",
         authDomain: "material-check-sheet-79654.firebaseapp.com",
@@ -189,11 +205,6 @@
         itemsDbCloud = snapshot.val() || {};
     });
 
-    // Otomatis nyalakan kamera saat pertama kali dibuka
-    window.addEventListener('DOMContentLoaded', () => {
-        startScanner();
-    });
-
     function showToast(message, isError = false) {
         const toast = document.getElementById('operator-toast');
         toast.innerText = message;
@@ -204,6 +215,11 @@
 
     function startScanner() {
         isCameraActive = true;
+        
+        // Ubah tampilan box menjadi tinggi penuh & hilangkan garis laser placeholder
+        document.getElementById('camera-container-box').classList.add('active');
+        document.getElementById('laser-bar').style.display = "none";
+        
         document.getElementById('camera-control-btn').textContent = "🔴 MATIKAN KAMERA";
         document.getElementById('camera-control-btn').className = "btn btn-danger";
 
@@ -225,13 +241,23 @@
             }).catch(() => {
                 setCameraOfflineStyle();
             });
+        } else {
+            setCameraOfflineStyle();
         }
     }
 
     function setCameraOfflineStyle() {
         isCameraActive = false;
+        
+        // Kembalikan box menjadi berwujud strip garis tipis kembali
+        document.getElementById('camera-container-box').classList.remove('active');
+        document.getElementById('laser-bar').style.display = "block";
+        
         document.getElementById('camera-control-btn').textContent = "📷 AKTIFKAN KAMERA";
         document.getElementById('camera-control-btn').className = "btn";
+        
+        const readerEl = document.getElementById('reader');
+        if (readerEl) readerEl.innerHTML = "";
     }
 
     function toggleCamera() {
@@ -240,14 +266,12 @@
     }
     
     function onScanSuccess(decodedText) {
-        // Stop scan sementara agar popup tidak bertumpuk jika terus mendeteksi QR
         stopScanner(); 
 
         let token = decodedText.trim().toUpperCase();
         let foundId = null;
         let isChildScan = false;
 
-        // Cari token QR di database cloud
         Object.keys(itemsDbCloud).forEach(key => { 
             let item = itemsDbCloud[key];
             if (item.qrCode === token) { 
@@ -263,7 +287,6 @@
             openOutModal(foundId, isChildScan, token);
         } else {
             alert(`⚠️ QR Code [${token}] Tidak Terdaftar di Sistem!`);
-            // Nyalakan kamera kembali jika salah scan
             startScanner();
         }
     }
@@ -271,17 +294,15 @@
     function openOutModal(itemId, isChildScan, token) {
         const item = itemsDbCloud[itemId];
         
-        // Setup Informasi Nama Barang
         let infoText = `Nama Barang: ${item.name}\nKode QR: ${token}`;
         document.getElementById('item-info-display').innerText = infoText;
 
-        // Setup Badge Status Tipe Kemasan
         const badgeArea = document.getElementById('item-status-badge-area');
         if (isChildScan) {
             badgeArea.innerHTML = `<span class="badge-alert" style="background:#f39c12; color:#fff;">🧵 SCAN ECERAN (ROLL)</span>`;
             document.getElementById('qty-label').textContent = "Kuantitas Keluar (Otomatis 1 Roll)";
             document.getElementById('qty-input').value = "1";
-            document.getElementById('qty-input').disabled = true; // Kunci inputan karena aturan 1 eceran roll
+            document.getElementById('qty-input').disabled = true;
         } else {
             badgeArea.innerHTML = `<span class="badge-alert" style="background:#2980b9; color:#fff;">📦 SCAN UTAMA (${(item.unit || 'pcs').toUpperCase()})</span>`;
             document.getElementById('qty-label').textContent = `Kuantitas Keluar (${item.unit || 'pcs'})`;
@@ -293,7 +314,6 @@
         document.getElementById('out-mutation-modal').classList.add('active');
         setTimeout(() => document.getElementById('desc-input').focus(), 150);
 
-        // Handler klik tombol simpan konfirmasi
         document.getElementById('submit-out-btn').onclick = function() {
             const qtyOut = isChildScan ? 1 : parseInt(document.getElementById('qty-input').value);
             const keterangan = document.getElementById('desc-input').value.trim() || (isChildScan ? `Scan Eceran Roll [${token}]` : "Scan Operator Out");
@@ -306,7 +326,6 @@
 
     function closeOutModal() {
         document.getElementById('out-mutation-modal').classList.remove('active');
-        // Nyalakan kamera kembali untuk siap memindai barang berikutnya
         startScanner();
     }
 
@@ -314,13 +333,11 @@
         const item = itemsDbCloud[itemId];
         let currentMutations = item.mutations || [];
 
-        // Generate timestamp lokal format YYYY-MM-DD HH:MM:SS
         const now = new Date();
         const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
         let finalKetLog = isChildScan ? `${keterangan} (Dus Terbuka / Broken Pack)` : keterangan;
 
-        // Push baris baru transaksi OUT
         currentMutations.push({
             tanggal: timestamp,
             jenis: "OUT",
@@ -331,21 +348,17 @@
             stockAkhir: 0
         });
 
-        // Hitung ulang saldo berjalan
         let updates = {};
         updates['items_db/' + itemId + '/mutations'] = recalculateLogic({ ...item, mutations: currentMutations });
         
-        // Jika operator scan roll eceran, otomatis flag kemasan induk berubah menjadi broken pack
         if (isChildScan && item.isParent) {
             updates['items_db/' + itemId + '/brokenPack'] = true;
         }
 
-        // Kirim update ke Cloud Firebase
         database.ref().update(updates)
             .then(() => {
                 showToast(`🔻 Sukses memotong ${qtyOut} ${item.unit || 'pcs'}!`);
                 document.getElementById('out-mutation-modal').classList.remove('active');
-                // Balik ke mode stand-by scanner
                 startScanner();
             })
             .catch(err => {
@@ -353,7 +366,6 @@
             });
     }
 
-    // Fungsi hitung mundur/maju total saldo sisa berjalan bincard
     function recalculateLogic(item) {
         if (!item || !item.mutations) return [];
         let init = item.mutations.find(m => m.jenis === "INITIAL");
