@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Operator Scanner - Pengurangan Stok Gudang</title>
+    <title>Operator Scanner - Pengurangan Stok Gudang Fast-Scan</title>
     <!-- Library QR Scanner -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
@@ -40,16 +40,16 @@
         /* MAIN CONTENT */
         .container {
             flex: 1; max-width: 500px; width: 100%; margin: 0 auto; padding: 20px;
-            display: flex; flex-direction: column; justify-content: center;
+            display: flex; flex-direction: column; gap: 20px; justify-content: flex-start;
         }
 
-        .scan-card {
+        .scan-card, .history-card {
             background: var(--white); border-radius: 12px; padding: 25px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.05);
-            text-align: center;
         }
-
-        .scan-card h2 { font-size: 20px; color: var(--primary); margin-bottom: 8px; }
+        
+        .scan-card { text-align: center; }
+        .scan-card h2, .history-card h2 { font-size: 20px; color: var(--primary); margin-bottom: 8px; }
         .scan-card p.subtitle { font-size: 13px; color: var(--gray); margin-bottom: 20px; }
 
         /* CAMERA AREA */
@@ -81,44 +81,26 @@
         }
         .btn:active { transform: scale(0.98); }
         .btn-danger { background-color: var(--secondary); }
-        .btn-secondary { background-color: #7f8c8d; }
-
-        /* MODAL POP-UP */
-        .modal-overlay {
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(44, 62, 80, 0.7); backdrop-filter: blur(4px);
-            z-index: 2000; display: none; align-items: center; justify-content: center; padding: 20px;
-            opacity: 0; transition: opacity 0.3s ease;
-        }
-        .modal-overlay.active { display: flex; opacity: 1; }
-        .modal-content {
-            background: var(--white); width: 100%; max-width: 400px; border-radius: 12px;
-            box-shadow: 0 15px 30px rgba(0,0,0,0.2); padding: 24px;
-            transform: scale(0.9); transition: transform 0.3s ease;
-        }
-        .modal-overlay.active .modal-content { transform: scale(1); }
-        .modal-header { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #eee; }
-        .modal-header h3 { font-size: 18px; color: var(--primary); }
-        
-        .form-group { margin-bottom: 15px; text-align: left; }
-        .form-group label { display: block; font-size: 11px; font-weight: 700; margin-bottom: 5px; color: #555; text-transform: uppercase; }
-        .form-control { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; color: var(--dark); }
-        .form-control:focus { outline: none; border-color: var(--secondary); }
-
-        .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
-        .modal-footer .btn { width: auto; padding: 10px 20px; font-size: 13px; }
 
         /* TOAST FLOATING */
         .toast {
             position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(100px);
-            background: #27ae60; color: white; padding: 12px 24px; border-radius: 30px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-size: 13px; font-weight: 600;
+            background: #27ae60; color: white; padding: 14px 24px; border-radius: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-size: 14px; font-weight: 600;
             z-index: 9999; opacity: 0; transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s;
-            text-align: center; min-width: 280px;
+            text-align: center; min-width: 300px;
+            line-height: 1.4;
         }
         .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
 
-        .badge-alert { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-top: 5px; }
+        /* HISTORY AREA */
+        .history-card h2 { display: flex; align-items: center; gap: 8px; font-size: 18px; margin-bottom: 15px; }
+        .table-responsive { width: 100%; overflow-x: auto; border-radius: 6px; border: 1px solid #eee; }
+        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+        th { background-color: var(--light); color: var(--primary); font-weight: 600; padding: 10px; border-bottom: 2px solid #eee; }
+        td { padding: 12px 10px; border-bottom: 1px solid #eee; color: #555; vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        .text-muted-time { font-size: 11px; color: var(--gray); display: block; margin-top: 20px; text-align: center; }
     </style>
 </head>
 <body>
@@ -126,39 +108,10 @@
     <!-- NOTIFIKASI TOAST -->
     <div id="operator-toast" class="toast">🟢 Terhubung ke Sistem Cloud</div>
 
-    <!-- MODAL INPUT OUT -->
-    <div id="out-mutation-modal" class="modal-overlay">
-        <div class="modal-content">
-            <div class="modal-header">
-                <span style="font-size: 20px;">🔻</span>
-                <h3>Input Barang Keluar</h3>
-            </div>
-            <div class="form-group">
-                <p id="item-info-display" style="font-size: 14px; font-weight: 600; color: var(--primary); line-height: 1.4;"></p>
-                <div id="item-status-badge-area"></div>
-            </div>
-            
-            <div class="form-group">
-                <label id="qty-label">Jumlah Keluar (Qty)</label>
-                <input type="number" id="qty-input" class="form-control" min="1" value="1">
-            </div>
-            
-            <div class="form-group">
-                <label>Keterangan / Tujuan Keluar</label>
-                <input type="text" id="desc-input" class="form-control" placeholder="Cth: Produksi, Kirim ke Toko, dll" autocomplete="off">
-            </div>
-
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeOutModal()">Batal</button>
-                <button class="btn btn-danger" id="submit-out-btn">Konfirmasi OUT</button>
-            </div>
-        </div>
-    </div>
-
     <!-- HEADER -->
     <header>
         <div>
-            <h1>⚙️ Terminal Operator</h1>
+            <h1>⚙️ Terminal Operator (Auto-OUT)</h1>
         </div>
         <div>
             <p>Status Koneksi: <span class="status-badge">ONLINE</span></p>
@@ -167,17 +120,38 @@
 
     <!-- CONTENT AREA -->
     <div class="container">
+        <!-- AREA SCANNER -->
         <div class="scan-card">
-            <h2>Pindai QR Code Barang</h2>
-            <p class="subtitle">Klik aktifkan kamera untuk mulai memindai QR Code Dus atau Roll Eceran.</p>
+            <h2>Pindai Cepat Tanpa Klik</h2>
+            <p class="subtitle">Setiap pemindaian QR Code akan langsung mengurangi stok sebanyak 1 unit.</p>
             
-            <!-- Box kamera dengan animasi melembut saat aktif -->
             <div id="camera-container-box" class="camera-box">
                 <div id="laser-bar" class="laser-line"></div>
                 <div id="reader"></div>
             </div>
 
             <button id="camera-control-btn" class="btn" onclick="toggleCamera()">📷 AKTIFKAN KAMERA</button>
+        </div>
+
+        <!-- AREA RIWAYAT STOCK -->
+        <div class="history-card">
+            <h2>📋 Riwayat Scan Hari Ini</h2>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nama Barang</th>
+                            <th style="text-align: right; padding-right: 15px;">Jumlah Keluar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-log-table">
+                        <tr>
+                            <td colspan="2" style="text-align: center; color: var(--gray); font-style: italic; padding: 20px;">Belum ada aktivitas pemindaian barang keluar.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <span class="text-muted-time">*Menampilkan maksimal 10 aktivitas terbaru</span>
         </div>
     </div>
 
@@ -200,23 +174,23 @@
     let itemsDbCloud = {};
     let isCameraActive = false;
 
-    // Sinkronisasi data dari Firebase
+    // Sinkronisasi data dari Firebase & Otomatis Render Riwayat
     database.ref('items_db').on('value', (snapshot) => {
         itemsDbCloud = snapshot.val() || {};
+        renderHistoryTable();
     });
 
-    function showToast(message, isError = false) {
+    function showToast(message, isError = false, duration = 3500) {
         const toast = document.getElementById('operator-toast');
-        toast.innerText = message;
+        toast.innerHTML = message;
         toast.style.background = isError ? "#e74c3c" : "#27ae60";
         toast.classList.add('show');
-        setTimeout(() => { toast.classList.remove('show'); }, 3500);
+        setTimeout(() => { toast.classList.remove('show'); }, duration);
     }
 
     function startScanner() {
         isCameraActive = true;
         
-        // Ubah tampilan box menjadi tinggi penuh & hilangkan garis laser placeholder
         document.getElementById('camera-container-box').classList.add('active');
         document.getElementById('laser-bar').style.display = "none";
         
@@ -226,10 +200,10 @@
         html5QrcodeScanner = new Html5Qrcode("reader");
         html5QrcodeScanner.start(
             { facingMode: "environment" }, 
-            { fps: 12, qrbox: 250 },
+            { fps: 15, qrbox: 250 },
             onScanSuccess
         ).catch(() => {
-            showToast("Gagal mengakses kamera!", true);
+            showToast("⚠️ Gagal mengakses kamera!", true);
             setCameraOfflineStyle();
         });
     }
@@ -249,7 +223,6 @@
     function setCameraOfflineStyle() {
         isCameraActive = false;
         
-        // Kembalikan box menjadi berwujud strip garis tipis kembali
         document.getElementById('camera-container-box').classList.remove('active');
         document.getElementById('laser-bar').style.display = "block";
         
@@ -284,59 +257,23 @@
         });
 
         if (foundId) {
-            openOutModal(foundId, isChildScan, token);
+            eksekusiPotongStokFirebaseOtomatis(foundId, 1, isChildScan, token);
         } else {
-            alert(`⚠️ QR Code [${token}] Tidak Terdaftar di Sistem!`);
-            startScanner();
+            showToast(`❌ QR Code [${token}]<br>Tidak Terdaftar di Database!`, true, 4000);
+            setTimeout(() => { startScanner(); }, 2000);
         }
     }
 
-    function openOutModal(itemId, isChildScan, token) {
-        const item = itemsDbCloud[itemId];
-        
-        let infoText = `Nama Barang: ${item.name}\nKode QR: ${token}`;
-        document.getElementById('item-info-display').innerText = infoText;
-
-        const badgeArea = document.getElementById('item-status-badge-area');
-        if (isChildScan) {
-            badgeArea.innerHTML = `<span class="badge-alert" style="background:#f39c12; color:#fff;">🧵 SCAN ECERAN (ROLL)</span>`;
-            document.getElementById('qty-label').textContent = "Kuantitas Keluar (Otomatis 1 Roll)";
-            document.getElementById('qty-input').value = "1";
-            document.getElementById('qty-input').disabled = true;
-        } else {
-            badgeArea.innerHTML = `<span class="badge-alert" style="background:#2980b9; color:#fff;">📦 SCAN UTAMA (${(item.unit || 'pcs').toUpperCase()})</span>`;
-            document.getElementById('qty-label').textContent = `Kuantitas Keluar (${item.unit || 'pcs'})`;
-            document.getElementById('qty-input').value = "1";
-            document.getElementById('qty-input').disabled = false;
-        }
-
-        document.getElementById('desc-input').value = "";
-        document.getElementById('out-mutation-modal').classList.add('active');
-        setTimeout(() => document.getElementById('desc-input').focus(), 150);
-
-        document.getElementById('submit-out-btn').onclick = function() {
-            const qtyOut = isChildScan ? 1 : parseInt(document.getElementById('qty-input').value);
-            const keterangan = document.getElementById('desc-input').value.trim() || (isChildScan ? `Scan Eceran Roll [${token}]` : "Scan Operator Out");
-            
-            if (isNaN(qtyOut) || qtyOut <= 0) return alert("Masukkan kuantitas secara valid!");
-            
-            eksekusiPotongStokFirebase(itemId, qtyOut, keterangan, isChildScan);
-        };
-    }
-
-    function closeOutModal() {
-        document.getElementById('out-mutation-modal').classList.remove('active');
-        startScanner();
-    }
-
-    function eksekusiPotongStokFirebase(itemId, qtyOut, keterangan, isChildScan) {
+    function eksekusiPotongStokFirebaseOtomatis(itemId, qtyOut, isChildScan, token) {
         const item = itemsDbCloud[itemId];
         let currentMutations = item.mutations || [];
 
         const now = new Date();
         const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
-        let finalKetLog = isChildScan ? `${keterangan} (Dus Terbuka / Broken Pack)` : keterangan;
+        let finalKetLog = isChildScan 
+            ? `Scan Out Otomatis (Roll Eceran: ${token}) - Broken Pack` 
+            : `Scan Out Otomatis (Dus Utama: ${token})`;
 
         currentMutations.push({
             tanggal: timestamp,
@@ -357,13 +294,70 @@
 
         database.ref().update(updates)
             .then(() => {
-                showToast(`🔻 Sukses memotong ${qtyOut} ${item.unit || 'pcs'}!`);
-                document.getElementById('out-mutation-modal').classList.remove('active');
-                startScanner();
+                let tipeTeks = isChildScan ? "Roll Eceran" : "Dus Utama";
+                showToast(`✅ <b>SUKSES OUT!</b><br>${item.name}<br>Dipotong: 1 ${isChildScan ? 'Roll' : (item.unit || 'pcs')} (${tipeTeks})`, false, 2500);
+                
+                setTimeout(() => { startScanner(); }, 2000);
             })
             .catch(err => {
-                alert("Gagal memotong stok ke server cloud: " + err.message);
+                showToast("❌ Gagal mengirim data ke server: " + err.message, true, 4000);
+                setTimeout(() => { startScanner(); }, 2000);
             });
+    }
+
+    // Fungsi Render Tabel Riwayat Transaksi (Tanpa Kolom Tipe)
+    function renderHistoryTable() {
+        const tbody = document.getElementById('history-log-table');
+        let allOutRecords = [];
+
+        Object.keys(itemsDbCloud).forEach(key => {
+            const item = itemsDbCloud[key];
+            if (item.mutations && Array.isArray(item.mutations)) {
+                item.mutations.forEach(mut => {
+                    if (mut.jenis === "OUT") {
+                        allOutRecords.push({
+                            name: item.name,
+                            unit: item.unit || 'pcs',
+                            tanggal: mut.tanggal,
+                            out: mut.out,
+                            ket: mut.ket || ''
+                        });
+                    }
+                });
+            }
+        });
+
+        // Urutkan berdasarkan tanggal terbaru
+        allOutRecords.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+
+        // Ambil 10 teratas
+        const limitedRecords = allOutRecords.slice(0, 10);
+
+        if (limitedRecords.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="2" style="text-align: center; color: var(--gray); font-style: italic; padding: 20px;">Belum ada aktivitas pemindaian barang keluar.</td></tr>`;
+            return;
+        }
+
+        let htmlString = "";
+        limitedRecords.forEach(rec => {
+            const isRoll = rec.ket.includes("Roll Eceran");
+            const unitLabel = isRoll ? "Roll" : rec.unit;
+            const timePart = rec.tanggal.split(" ")[1] || rec.tanggal;
+
+            htmlString += `
+                <tr>
+                    <td>
+                        <strong style="color: var(--primary); font-size:13px;">${rec.name}</strong>
+                        <span style="display:block; font-size:11px; color:#95a5a6; margin-top:2px;">🕒 Jam ${timePart}</span>
+                    </td>
+                    <td style="text-align: right; padding-right: 15px; font-weight: bold; color: var(--secondary);">
+                        -${rec.out} ${unitLabel}
+                    </td>
+                </tr>
+            `;
+        });
+
+        tbody.innerHTML = htmlString;
     }
 
     function recalculateLogic(item) {
