@@ -4,22 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Operator Scanner - Pengurangan Stok Gudang Fast-Scan</title>
-    <!-- Library QR Scanner -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
-    <!-- Firebase SDK (Compat Version) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
 
     <style>
         :root {
-            --primary: #2c3e50;
+            --primary: #228b22;
             --secondary: #e74c3c; /* Menggunakan warna merah sebagai identitas OUT */
             --success: #2ecc71;
             --dark: #34495e;
             --white: #ffffff;
             --gray: #95a5a6;
             --light: #f8f9fa;
+            --android-ripple: rgba(0, 0, 0, 0.1);
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; }
@@ -101,14 +100,84 @@
         td { padding: 12px 10px; border-bottom: 1px solid #eee; color: #555; vertical-align: middle; }
         tr:last-child td { border-bottom: none; }
         .text-muted-time { font-size: 11px; color: var(--gray); display: block; margin-top: 20px; text-align: center; }
+
+        /* POPUP MODAL DIALOG (ANDROID MATERIAL STYLE) */
+        .android-dialog-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6); z-index: 10000;
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+            padding: 24px;
+        }
+        .android-dialog-overlay.open { opacity: 1; pointer-events: auto; }
+        
+        .android-dialog {
+            background: var(--white); width: 100%; max-width: 380px;
+            border-radius: 28px; padding: 24px; box-shadow: 0 12px 32px rgba(0,0,0,0.25);
+            transform: scale(0.85); transition: transform 0.25s cubic-bezier(0, 0, 0.2, 1);
+            text-align: left;
+        }
+        .android-dialog-overlay.open .android-dialog { transform: scale(1); }
+
+        .android-dialog h3 { font-size: 20px; font-weight: 600; color: var(--primary); margin-bottom: 12px; }
+        .android-dialog p.item-info { font-size: 14px; color: #555; margin-bottom: 20px; font-weight: 500; background: #f1f5f9; padding: 10px 14px; border-radius: 12px; border-left: 4px solid var(--primary); }
+        
+        .android-field { margin-bottom: 18px; }
+        .android-field label { display: block; font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
+        
+        .android-input-container { display: flex; align-items: center; gap: 8px; }
+        .android-input-container input { flex: 1; }
+        
+        .android-input {
+            width: 100%; padding: 12px 16px; border: 2px solid #cbd5e1; border-radius: 14px;
+            font-size: 15px; outline: none; background: #fff; transition: border-color 0.2s;
+        }
+        .android-input:focus { border-color: var(--primary); }
+
+        .android-unit {
+            background: #e2e8f0; padding: 12px 16px; border-radius: 14px;
+            font-size: 14px; font-weight: bold; color: var(--primary); min-width: 65px; text-align: center; border: 2px solid #cbd5e1;
+        }
+
+        .android-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+        .android-btn {
+            background: transparent; border: none; color: var(--primary);
+            padding: 10px 16px; font-size: 14px; font-weight: 700; border-radius: 20px;
+            cursor: pointer; text-transform: uppercase; letter-spacing: .5px; transition: background 0.2s;
+        }
+        .android-btn:hover { background: var(--android-ripple); }
+        .android-btn-confirm { color: var(--secondary); }
     </style>
 </head>
 <body>
 
-    <!-- NOTIFIKASI TOAST -->
     <div id="operator-toast" class="toast">🟢 Terhubung ke Sistem Cloud</div>
 
-    <!-- HEADER -->
+    <div id="android-modal-overlay" class="android-dialog-overlay">
+        <div class="android-dialog">
+            <h3>Konfirmasi Barang Keluar</h3>
+            <p id="modal-item-name" class="item-info">-</p>
+            
+            <div class="android-field">
+                <label for="modal-qty-out">Jumlah Keluar</label>
+                <div class="android-input-container">
+                    <input type="number" id="modal-qty-out" class="android-input" value="" min="0" placeholder="0">
+                    <span id="modal-unit-badge" class="android-unit">-</span>
+                </div>
+            </div>
+
+            <div class="android-field">
+                <label for="modal-ket-opsional">Keterangan Tambahan (Opsional)</label>
+                <input type="text" id="modal-ket-opsional" class="android-input" placeholder="Contoh: Proyek A, Rusak, dll.">
+            </div>
+
+            <div class="android-actions">
+                <button type="button" class="android-btn" onclick="closeAndroidModal()">Batal</button>
+                <button type="button" class="android-btn android-btn-confirm" onclick="submitAndroidModal()">Simpan</button>
+            </div>
+        </div>
+    </div>
+
     <header>
         <div>
             <h1>⚙️ Terminal Operator (Auto-OUT)</h1>
@@ -118,12 +187,10 @@
         </div>
     </header>
 
-    <!-- CONTENT AREA -->
     <div class="container">
-        <!-- AREA SCANNER -->
         <div class="scan-card">
             <h2>Pindai Cepat Tanpa Klik</h2>
-            <p class="subtitle">Setiap pemindaian QR Code akan langsung mengurangi stok sebanyak 1 unit.</p>
+            <p class="subtitle">Setiap pemindaian QR Code akan menampilkan pop-up konfirmasi input barang.</p>
             
             <div id="camera-container-box" class="camera-box">
                 <div id="laser-bar" class="laser-line"></div>
@@ -133,7 +200,6 @@
             <button id="camera-control-btn" class="btn" onclick="toggleCamera()">📷 AKTIFKAN KAMERA</button>
         </div>
 
-        <!-- AREA RIWAYAT STOCK -->
         <div class="history-card">
             <h2>📋 Riwayat Scan Hari Ini</h2>
             <div class="table-responsive">
@@ -173,6 +239,9 @@
     let html5QrcodeScanner = null;
     let itemsDbCloud = {};
     let isCameraActive = false;
+
+    // State penyimpan sementara hasil scan aktif
+    let activeScanData = null;
 
     // Sinkronisasi data dari Firebase & Otomatis Render Riwayat
     database.ref('items_db').on('value', (snapshot) => {
@@ -257,14 +326,57 @@
         });
 
         if (foundId) {
-            eksekusiPotongStokFirebaseOtomatis(foundId, 1, isChildScan, token);
+            const item = itemsDbCloud[foundId];
+            let unitTeks = isChildScan ? 'Roll' : (item.unit || 'pcs');
+
+            // Set data scan aktif ke state memory global halaman
+            activeScanData = { foundId, isChildScan, token };
+
+            // Injeksi data & Buka Pop Up Android Dialog
+            document.getElementById('modal-item-name').innerHTML = `📦 ${item.name}`;
+            document.getElementById('modal-unit-badge').textContent = unitTeks;
+            document.getElementById('modal-qty-out').value = ""; // dikosongkan agar tidak terlihat
+            document.getElementById('modal-ket-opsional').value = ""; // bersihkan keterangan awal
+            
+            document.getElementById('android-modal-overlay').classList.add('open');
+            // Auto fokus ke field input Qty untuk mempermudah operator
+            setTimeout(() => { document.getElementById('modal-qty-out').focus(); }, 100);
         } else {
             showToast(`❌ QR Code [${token}]<br>Tidak Terdaftar di Database!`, true, 4000);
             setTimeout(() => { startScanner(); }, 2000);
         }
     }
 
-    function eksekusiPotongStokFirebaseOtomatis(itemId, qtyOut, isChildScan, token) {
+    function closeAndroidModal() {
+        document.getElementById('android-modal-overlay').classList.remove('open');
+        activeScanData = null;
+        // Kamera otomatis aktif kembali ketika operator membatalkan dialog
+        setTimeout(() => { startScanner(); }, 300);
+    }
+
+    function submitAndroidModal() {
+        if (!activeScanData) return;
+
+        // Ambil data input
+        let qtyInput = parseInt(document.getElementById('modal-qty-out').value);
+        if (isNaN(qtyInput) || qtyInput < 0) qtyInput = 0; // default 0 jika kosong
+
+        let ketTambahan = document.getElementById('modal-ket-opsional').value.trim();
+
+        // Tutup modal lebih dulu dengan animasi material
+        document.getElementById('android-modal-overlay').classList.remove('open');
+
+        // Eksekusi potong stok ke cloud
+        eksekusiPotongStokFirebaseOtomatis(
+            activeScanData.foundId, 
+            qtyInput, 
+            activeScanData.isChildScan, 
+            activeScanData.token, 
+            ketTambahan
+        );
+    }
+
+    function eksekusiPotongStokFirebaseOtomatis(itemId, qtyOut, isChildScan, token, ketTambahan) {
         const item = itemsDbCloud[itemId];
         let currentMutations = item.mutations || [];
 
@@ -272,8 +384,13 @@
         const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
         let finalKetLog = isChildScan 
-            ? `Scan Out Otomatis (Roll Eceran: ${token}) - Broken Pack` 
-            : `Scan Out Otomatis (Dus Utama: ${token})`;
+            ? `Scan Out (Roll Eceran: ${token}) - Broken Pack` 
+            : `Scan Out (Dus Utama: ${token})`;
+
+        // Gabungkan keterangan tambahan jika diisi oleh operator
+        if (ketTambahan) {
+            finalKetLog += ` | Ket: ${ketTambahan}`;
+        }
 
         currentMutations.push({
             tanggal: timestamp,
@@ -295,12 +412,15 @@
         database.ref().update(updates)
             .then(() => {
                 let tipeTeks = isChildScan ? "Roll Eceran" : "Dus Utama";
-                showToast(`✅ <b>SUKSES OUT!</b><br>${item.name}<br>Dipotong: 1 ${isChildScan ? 'Roll' : (item.unit || 'pcs')} (${tipeTeks})`, false, 2500);
+                let unitLabelTeks = isChildScan ? 'Roll' : (item.unit || 'pcs');
+                showToast(`✅ <b>SUKSES OUT!</b><br>${item.name}<br>Dipotong: ${qtyOut} ${unitLabelTeks} (${tipeTeks})`, false, 2500);
                 
+                activeScanData = null;
                 setTimeout(() => { startScanner(); }, 2000);
             })
             .catch(err => {
                 showToast("❌ Gagal mengirim data ke server: " + err.message, true, 4000);
+                activeScanData = null;
                 setTimeout(() => { startScanner(); }, 2000);
             });
     }
